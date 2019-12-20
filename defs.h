@@ -1,0 +1,13 @@
+#ifndef BILL_PAYMENT_SIMULATION_DEFS_H
+#define BILL_PAYMENT_SIMULATION_DEFS_H
+
+#define NUM_BILLS 5
+#define NUM_ATM 10
+
+#define CABLE_TV 0
+#define ELECTRICITY 1
+#define GAS 2
+#define TELECOMM 3
+#define WATER 4
+
+#endif //BILL_PAYMENT_SIMULATION_DEFS_H

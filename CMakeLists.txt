@@ -3,4 +3,6 @@ project(bill_payment_simulation)
 
 set(CMAKE_CXX_STANDARD 14)
 
-add_executable(bill_payment_simulation main.cpp)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lpthread")
+
+add_executable(bill_payment_simulation main.cpp defs.h customer.cpp customer.h atm.cpp atm.h)
