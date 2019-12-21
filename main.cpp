@@ -3,6 +3,7 @@
 #include <sstream>
 #include <thread>
 #include <chrono>
+#include <atomic>
 #include "customer.h"
 #include "defs.h"
 #include "atm.h"
@@ -10,15 +11,17 @@
 using namespace std;
 
 //Global var definitions
-pthread_mutex_t bill_mutex[NUM_BILLS];
+atomic_int atomic_bill[NUM_BILLS];
 pthread_mutex_t atm_mutex[NUM_ATM];
 pthread_mutex_t atm_serve_mutex[NUM_ATM];
 pthread_mutex_t atm_customer_mutex[NUM_ATM];
+pthread_mutex_t stream_mutex;
 customer *atm_service[NUM_ATM];
-int bill_types[NUM_BILLS] = {0};
 pthread_t atm_threads[NUM_ATM];
 pthread_t *customer_threads;
 int num_cust = 0;
+
+string bill_types[] = {"cableTV", "electricity", "gas", "telecommunication", "water"};
 
 void *customer_handler(void *_c);
 
@@ -68,9 +71,17 @@ int main(int argc, char **argv) {
     for (int i = 0; i < NUM_ATM; ++i) {
         pthread_cancel(atm_threads[i]);
         pthread_mutex_unlock(&atm_serve_mutex[i]);
+        pthread_join(atm_threads[i], nullptr);
     }
 
     //Write the output
+
+    stream << "All payments are completed." << endl;
+    stream << bill_types[CABLE_TV] << ": " << to_string(atomic_bill[CABLE_TV]) << "TL" << endl;
+    stream << bill_types[ELECTRICITY] << ": " << to_string(atomic_bill[ELECTRICITY]) << "TL" << endl;
+    stream << bill_types[GAS] << ": " << to_string(atomic_bill[GAS]) << "TL" << endl;
+    stream << bill_types[TELECOMM] << ": " << to_string(atomic_bill[TELECOMM]) << "TL" << endl;
+    stream << bill_types[WATER] << ": " << to_string(atomic_bill[WATER]) << "TL" << endl;
 
     cleanup:
 
@@ -83,15 +94,17 @@ int main(int argc, char **argv) {
 void *customer_handler(void *_c) {
     auto *cst = (customer *) _c;
     int retval = 0;
-
+    //Wait our time
     this_thread::sleep_for(chrono::milliseconds(cst->wait));
-
+    //Reserve the atm.
     pthread_mutex_lock(&atm_mutex[cst->atm]);
-
+    // Give our service description to atm
     atm_service[cst->atm] = cst;
-
+    //Let the atm serve us.
     pthread_mutex_unlock(&atm_serve_mutex[cst->atm]);
+    //Check if atm is finished our service.
     pthread_mutex_lock(&atm_customer_mutex[cst->atm]);
+    //Let other customers use this atm
     pthread_mutex_unlock(&atm_mutex[cst->atm]);
 
     pthread_exit(&retval);
@@ -103,14 +116,21 @@ void *atm_handler(void *_a) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
     while (true) {
+        //Check if any customer is pending
         pthread_mutex_lock(&atm_serve_mutex[atm->id]);
+        //Check if we should terminate our thread.
         pthread_testcancel();
-
+        //Get customer service description
         customer *cst = atm_service[atm->id];
-        pthread_mutex_lock(&bill_mutex[cst->bill_type]);
-        cout << cst->payment;
-        pthread_mutex_unlock(&atm_customer_mutex[cst->bill_type]);
-        pthread_mutex_unlock(&bill_mutex[cst->bill_type]);
+        // Pay the bills
+        atomic_bill[cst->bill_type].fetch_add(cst->payment);
+        //Log the payment
+        string s = "Customer" + to_string(cst->id) + ',' + to_string(cst->payment) + "TL," + bill_types[cst->bill_type] +'\n';
+        pthread_mutex_lock(&stream_mutex);
+        *atm->stream << s;
+        pthread_mutex_unlock(&stream_mutex);
+        //Inform the customer about completed service.
+        pthread_mutex_unlock(&atm_customer_mutex[atm->id]);
     }
 #pragma clang diagnostic pop
 
@@ -131,7 +151,7 @@ int read_file(char *file, int &num_customers, customer *&customers) {
 
 
     for (int i = 0; i < num_customers; ++i) {
-        customers[i].id = i;
+        customers[i].id = i + 1;
         getline(stream, line);
 
         istringstream ss(line);
@@ -147,15 +167,15 @@ int read_file(char *file, int &num_customers, customer *&customers) {
         getline(ss, word, ',');
         customers[i].payment = stoi(word);
 
-        if (bill_type == "cableTV") {
+        if (bill_type == bill_types[CABLE_TV]) {
             customers[i].bill_type = CABLE_TV;
-        } else if (bill_type == "electricity") {
+        } else if (bill_type == bill_types[ELECTRICITY]) {
             customers[i].bill_type = ELECTRICITY;
-        } else if (bill_type == "telecommunication") {
+        } else if (bill_type == bill_types[TELECOMM]) {
             customers[i].bill_type = TELECOMM;
-        } else if (bill_type == "gas") {
+        } else if (bill_type == bill_types[GAS]) {
             customers[i].bill_type = GAS;
-        } else if (bill_type == "water") {
+        } else {
             customers[i].bill_type = WATER;
         }
     }
